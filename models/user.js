@@ -7,7 +7,8 @@ const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, sparse: true }, 
   // Phone is also NOT required, but must be unique if it exists.
   phone: { type: String, unique: true, sparse: true },
-  password: { type: String, required: true }
+  password: { type: String, required: true },
+  walletBalance: { type: Number, default: 0 }
 }, { timestamps: true });
 
 userSchema.pre("save", async function (next) {

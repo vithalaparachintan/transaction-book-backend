@@ -6,6 +6,7 @@ const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoute");
 const customerRoutes = require("./routes/customerRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 // Configure environment variables
 dotenv.config();
@@ -20,6 +21,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/payments", paymentRoutes);
 
 app.get("/", (req, res) => res.send("Transaction Book backend"));
 
