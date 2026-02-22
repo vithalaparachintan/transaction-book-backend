@@ -14,7 +14,6 @@ const {
 } = require("../controllers/transactionController");
 
 router.use(protect);
--
 router.get("/monthly-summary", getMonthlySummary);
 
 router.get("/summary", getTransactionSummary);
