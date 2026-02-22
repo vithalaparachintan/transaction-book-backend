@@ -1,5 +1,8 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/user");
+const Customer = require("../models/Customer");
+const Transaction = require("../models/Transaction");
+const Payment = require("../models/Payment");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -72,7 +75,75 @@ const loginUser = async (req, res) => {
   }
 };
 
+const changePassword = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current password and new password are required" });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: "New password must be different from current password" });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.json({ message: "Password changed successfully" });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const deleteAccount = async (req, res) => {
+  const { password } = req.body;
+
+  try {
+    if (!password) {
+      return res.status(400).json({ message: "Password is required" });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Password is incorrect" });
+    }
+
+    await Promise.all([
+      Transaction.deleteMany({ user: user._id }),
+      Customer.deleteMany({ user: user._id }),
+      Payment.deleteMany({ $or: [{ sender: user._id }, { receiver: user._id }] }),
+      User.findByIdAndDelete(user._id),
+    ]);
+
+    return res.json({ message: "Account deleted successfully" });
+  } catch (err) {
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
+  changePassword,
+  deleteAccount,
 };
