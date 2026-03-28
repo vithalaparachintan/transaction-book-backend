@@ -397,6 +397,36 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+/**
+ * 9. ADD MONEY TO WALLET (For testing/demo purposes)
+ */
+const addMoneyToWallet = async (req, res) => {
+  try {
+    const { amount } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: "Valid amount required" });
+    }
+
+    if (amount > 100000) {
+      return res.status(400).json({ message: "Maximum limit: ₹100,000" });
+    }
+
+    const user = await User.findById(req.user._id);
+    user.walletBalance += Number(amount);
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `₹${Number(amount).toFixed(2)} added to wallet`,
+      newBalance: user.walletBalance
+    });
+  } catch (err) {
+    console.error("Add Money Error:", err);
+    return res.status(500).json({ message: "Failed to add money" });
+  }
+};
+
 module.exports = {
   initiatePayment,
   verifyPayment,
@@ -405,5 +435,6 @@ module.exports = {
   requestRefund,
   getWalletBalance,
   getPaymentStatistics,
-  getAllUsers
+  getAllUsers,
+  addMoneyToWallet
 };

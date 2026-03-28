@@ -9,7 +9,8 @@ const {
   requestRefund,
   getWalletBalance,
   getPaymentStatistics,
-  getAllUsers
+  getAllUsers,
+  addMoneyToWallet
 } = require("../controllers/paymentController");
 
 // All payment routes require authentication
@@ -20,6 +21,9 @@ router.get("/users/all", getAllUsers);
 
 // Wallet & Balance
 router.get("/balance", getWalletBalance);
+
+// Add money (for testing)
+router.post("/add-money", addMoneyToWallet);
 
 // Payment flow
 router.post("/initiate", initiatePayment);
