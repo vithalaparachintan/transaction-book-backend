@@ -29,14 +29,14 @@ router.post("/add-money", addMoneyToWallet);
 router.post("/initiate", initiatePayment);
 router.post("/verify", verifyPayment);
 
+// Statistics (must come before /:id route)
+router.get("/stats/summary", getPaymentStatistics);
+
 // Payment history & details
 router.get("/history", getPaymentHistory);
 router.get("/:id", getPaymentById);
 
 // Refund
 router.post("/:id/refund", requestRefund);
-
-// Statistics
-router.get("/stats/summary", getPaymentStatistics);
 
 module.exports = router;
