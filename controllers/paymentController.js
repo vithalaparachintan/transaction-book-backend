@@ -132,8 +132,10 @@ const verifyPayment = async (req, res) => {
     const sender = await User.findById(payment.sender);
     const receiver = await User.findById(payment.receiver._id);
 
-    sender.walletBalance += payment.fee + payment.tax; // Deduct fee
-    receiver.walletBalance += payment.netAmount; // Add net amount
+    // Deduct from sender's wallet: amount + fee + tax
+    sender.walletBalance -= (payment.amount + payment.fee + payment.tax);
+    // Give receiver the net amount (without fee and tax)
+    receiver.walletBalance += payment.netAmount;
 
     await sender.save();
     await receiver.save();
@@ -285,7 +287,9 @@ const requestRefund = async (req, res) => {
     const sender = await User.findById(payment.sender);
     const receiver = await User.findById(payment.receiver._id);
 
-    sender.walletBalance -= payment.fee + payment.tax;
+    // Add back the full amount, fee, and tax to sender
+    sender.walletBalance += (payment.amount + payment.fee + payment.tax);
+    // Remove the net amount from receiver (as if payment never happened)
     receiver.walletBalance -= payment.netAmount;
 
     await sender.save();

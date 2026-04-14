@@ -41,7 +41,7 @@ const registerUser = async (req, res) => {
     const user = await User.create(userToCreate);
     
     return res.status(201).json({
-      user: { id: user._id, name: user.name, email: user.email, phone: user.phone },
+      user: { _id: user._id, id: user._id, name: user.name, email: user.email, phone: user.phone },
       token: generateToken(user._id)
     });
   } catch (err) {
@@ -67,7 +67,7 @@ const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
     return res.json({
-      user: { id: user._id, name: user.name, email: user.email },
+      user: { _id: user._id, id: user._id, name: user.name, email: user.email, phone: user.phone },
       token: generateToken(user._id)
     });
   } catch (err) {
