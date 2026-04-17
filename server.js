@@ -1,5 +1,9 @@
 const express = require("express");
 const dotenv = require("dotenv");
+
+// Configure environment variables FIRST - before importing anything else
+dotenv.config();
+
 const cors = require("cors");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db"); 
@@ -9,9 +13,6 @@ const customerRoutes = require("./routes/customerRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const walletRoutes = require("./routes/walletRoutes");
-
-// Configure environment variables
-dotenv.config();
 
 const app = express();
 
