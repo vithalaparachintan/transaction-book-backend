@@ -3,6 +3,9 @@ const User = require("../models/user");
 const Customer = require("../models/Customer");
 const Transaction = require("../models/Transaction");
 const Payment = require("../models/Payment");
+const Wallet = require("../models/Wallet");
+const WalletTransaction = require("../models/WalletTransaction");
+const { initializeWallet } = require("./walletController");
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -39,6 +42,15 @@ const registerUser = async (req, res) => {
     }
 
     const user = await User.create(userToCreate);
+    
+    // Initialize wallet for new user
+    try {
+      await initializeWallet(user._id);
+      console.log(`✅ Wallet initialized for new user: ${user.name}`);
+    } catch (walletError) {
+      console.error("Error initializing wallet:", walletError);
+      // Don't fail registration if wallet creation fails
+    }
     
     return res.status(201).json({
       user: { _id: user._id, id: user._id, name: user.name, email: user.email, phone: user.phone },
@@ -132,6 +144,8 @@ const deleteAccount = async (req, res) => {
       Transaction.deleteMany({ user: user._id }),
       Customer.deleteMany({ user: user._id }),
       Payment.deleteMany({ $or: [{ sender: user._id }, { receiver: user._id }] }),
+      Wallet.deleteMany({ user: user._id }),
+      WalletTransaction.deleteMany({ user: user._id }),
       User.findByIdAndDelete(user._id),
     ]);
 
