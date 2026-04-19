@@ -8,9 +8,7 @@ dotenv.config();
 const requiredEnvVars = [
   "PORT",
   "MONGO_URI",
-  "JWT_SECRET",
-  "RAZORPAY_KEY_ID",
-  "RAZORPAY_KEY_SECRET"
+  "JWT_SECRET"
 ];
 
 const missingVars = requiredEnvVars.filter(v => !process.env[v]);
@@ -28,8 +26,18 @@ const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoute");
 const customerRoutes = require("./routes/customerRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
-const paymentRoutes = require("./routes/paymentRoutes");
 const walletRoutes = require("./routes/walletRoutes");
+
+const hasRazorpayConfig = Boolean(
+  process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+);
+
+let paymentRoutes = null;
+if (hasRazorpayConfig) {
+  paymentRoutes = require("./routes/paymentRoutes");
+} else {
+  console.warn("⚠️ Razorpay is not configured. /api/payments routes are disabled.");
+}
 
 const app = express();
 
@@ -41,8 +49,11 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/transactions", transactionRoutes);
-app.use("/api/payments", paymentRoutes);
 app.use("/api/wallet", walletRoutes);
+
+if (paymentRoutes) {
+  app.use("/api/payments", paymentRoutes);
+}
 
 app.get("/", (req, res) => res.send("Transaction Book backend"));
 
