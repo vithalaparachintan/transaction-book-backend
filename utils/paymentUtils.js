@@ -1,10 +1,18 @@
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
 
+// Verify Razorpay credentials exist
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  console.error("❌ RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not set in environment!");
+  console.error("Set these in Render Environment Variables:");
+  console.error("RAZORPAY_KEY_ID=rzp_test_JsJIFvRNpRvJBD");
+  console.error("RAZORPAY_KEY_SECRET=TkPYNLe5flGn3N3EbB9cBf9K");
+}
+
 // Initialize Razorpay
 const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET
+  key_id: process.env.RAZORPAY_KEY_ID || "rzp_test_placeholder",
+  key_secret: process.env.RAZORPAY_KEY_SECRET || "placeholder"
 });
 
 /**

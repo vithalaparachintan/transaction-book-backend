@@ -4,6 +4,23 @@ const dotenv = require("dotenv");
 // Configure environment variables FIRST - before importing anything else
 dotenv.config();
 
+// Validate required environment variables
+const requiredEnvVars = [
+  "PORT",
+  "MONGO_URI",
+  "JWT_SECRET",
+  "RAZORPAY_KEY_ID",
+  "RAZORPAY_KEY_SECRET"
+];
+
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+  console.error("❌ MISSING ENVIRONMENT VARIABLES:");
+  missingVars.forEach(v => console.error(`   - ${v}`));
+  console.error("\nSet these in Render Dashboard > Environment Variables");
+  process.exit(1);
+}
+
 const cors = require("cors");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db"); 
