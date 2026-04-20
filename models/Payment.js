@@ -18,7 +18,7 @@ const paymentSchema = new mongoose.Schema({
     orderId: { type: String, unique: true, sparse: true },
     paymentId: { type: String, unique: true, sparse: true },
     signature: { type: String },
-    method: { type: String, enum: ["card", "upi", "netbanking", "wallet", "emi"] },
+    method: { type: String, enum: ["card", "upi", "netbanking", "wallet", "emi", "add_money", "mock"] },
     cardDetails: {
       last4: { type: String },
       brand: { type: String },

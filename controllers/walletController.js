@@ -20,7 +20,7 @@ const {
 const {
   createRazorpayOrder,
   verifyPaymentSignature,
-  refundPayment
+  isMockPaymentGateway
 } = require("../utils/paymentUtils");
 
 /**
@@ -67,6 +67,16 @@ const getOrCreateWallet = async (userId) => {
   }
   
   return wallet;
+};
+
+const mapTransactionStatus = (status) => {
+  if (["initiated", "pending", "processing"].includes(status)) {
+    return "pending";
+  }
+  if (status === "completed") {
+    return "success";
+  }
+  return "failed";
 };
 
 /**
@@ -168,6 +178,124 @@ const initiateAddMoney = async (req, res) => {
 };
 
 /**
+ * Unified add money endpoint.
+ * - In live mode, creates order and returns verification payload.
+ * - In mock mode, credits wallet immediately.
+ */
+const addMoney = async (req, res) => {
+  let session = null;
+
+  try {
+    const userId = req.user._id;
+    const { amount, paymentMethod } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({ success: false, message: "Amount is required" });
+    }
+
+    validateAmount(amount);
+
+    if (!isMockPaymentGateway) {
+      return initiateAddMoney(req, res);
+    }
+
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    const wallet = await Wallet.findOne({ user: userId }).session(session);
+    if (!wallet) {
+      throw new Error("Wallet not found");
+    }
+
+    if (!wallet.isActive || wallet.isFrozen) {
+      throw new Error("Wallet is not active");
+    }
+
+    const order = await createRazorpayOrder(amount, userId, {
+      type: "ADD_MONEY",
+      description: `Mock add money - ${formatCurrency(amount)}`
+    });
+
+    const paymentId = `mock_pay_${Date.now()}`;
+    const signature = `mock_sig_${order.id}_${paymentId}`;
+
+    const walletTxn = new WalletTransaction({
+      user: userId,
+      type: "ADD_MONEY",
+      amount,
+      balanceBefore: wallet.balance,
+      balanceAfter: wallet.balance + amount,
+      status: "completed",
+      orderId: order.id,
+      paymentId,
+      razorpaySignature: signature,
+      description: `Adding money via ${paymentMethod || "mock_gateway"}`,
+      transactionId: generateTransactionId(),
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+      completedAt: new Date()
+    });
+
+    await walletTxn.save({ session });
+
+    wallet.balance += amount;
+    wallet.availableBalance = wallet.balance - wallet.pendingBalance;
+    wallet.totalMoneyAdded += amount;
+    wallet.totalTransactions += 1;
+    await wallet.save({ session });
+
+    const payment = new Payment({
+      sender: userId,
+      receiver: userId,
+      amount,
+      status: "completed",
+      razorpay: {
+        orderId: order.id,
+        paymentId,
+        signature,
+        method: "mock"
+      },
+      isPeerToPeer: false,
+      transactionId: walletTxn.transactionId,
+      completedAt: new Date()
+    });
+
+    await payment.save({ session });
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      success: true,
+      message: "Money added successfully (mock gateway)",
+      wallet: getWalletSummary(wallet),
+      transaction: {
+        id: walletTxn._id,
+        transactionId: walletTxn.transactionId,
+        amount: walletTxn.amount,
+        type: walletTxn.type,
+        status: mapTransactionStatus(walletTxn.status),
+        gatewayMode: "mock",
+        createdAt: walletTxn.createdAt
+      }
+    });
+  } catch (error) {
+    if (session) {
+      await session.abortTransaction();
+    }
+
+    console.error("Error in addMoney:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add money",
+      error: error.message
+    });
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
+  }
+};
+
+/**
  * Verify and complete add money transaction
  */
 const verifyAddMoney = async (req, res) => {
@@ -262,7 +390,7 @@ const verifyAddMoney = async (req, res) => {
         transactionId: walletTxn.transactionId,
         amount: walletTxn.amount,
         type: walletTxn.type,
-        status: walletTxn.status,
+        status: mapTransactionStatus(walletTxn.status),
         createdAt: walletTxn.createdAt
       }
     });
@@ -390,8 +518,8 @@ const sendMoneyToContact = async (req, res) => {
 
     await wallet.save({ session });
 
-    // Update contact balance (they owe us money, so balance decreases)
-    contact.balance -= amount;
+    // User gave money, so this contact now owes more.
+    contact.balance += amount;
     await contact.save({ session });
 
     // Create ledger transaction
@@ -400,7 +528,7 @@ const sendMoneyToContact = async (req, res) => {
       customer: contactId,
       customerName: contact.name,
       amount: amount,
-      type: "debit", // User sent money = debit
+      type: "credit",
       note: note || `Sent money to ${contact.name}`,
       date: new Date()
     });
@@ -425,7 +553,7 @@ const sendMoneyToContact = async (req, res) => {
         fee: fee,
         netAmount: netAmount,
         contactName: contact.name,
-        status: walletTxn.status,
+        status: mapTransactionStatus(walletTxn.status),
         createdAt: walletTxn.createdAt
       }
     });
@@ -521,8 +649,8 @@ const receiveMoneyFromContact = async (req, res) => {
 
     await wallet.save({ session });
 
-    // Update contact balance (they owe us less, so balance increases)
-    contact.balance += amount;
+    // User collected money, so this contact owes less.
+    contact.balance -= amount;
     await contact.save({ session });
 
     // Create ledger transaction
@@ -531,7 +659,7 @@ const receiveMoneyFromContact = async (req, res) => {
       customer: contactId,
       customerName: contact.name,
       amount: amount,
-      type: "credit", // User received money = credit
+      type: "debit",
       note: note || `Received money from ${contact.name}`,
       date: new Date()
     });
@@ -554,7 +682,7 @@ const receiveMoneyFromContact = async (req, res) => {
         type: walletTxn.type,
         amount: walletTxn.amount,
         contactName: contact.name,
-        status: walletTxn.status,
+        status: mapTransactionStatus(walletTxn.status),
         createdAt: walletTxn.createdAt
       }
     });
@@ -615,7 +743,8 @@ const getWalletTransactions = async (req, res) => {
         type: t.type,
         amount: t.amount,
         fee: t.fee,
-        status: t.status,
+        status: mapTransactionStatus(t.status),
+        internalStatus: t.status,
         description: t.description,
         contact: t.contact,
         contactName: t.contactName,
@@ -635,6 +764,29 @@ const getWalletTransactions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch transactions",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get contacts list for wallet flows (alias for /contacts requirement)
+ */
+const getWalletContacts = async (req, res) => {
+  try {
+    const contacts = await Customer.find({ user: req.user._id })
+      .select("name phone balance createdAt updatedAt")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      contacts
+    });
+  } catch (error) {
+    console.error("Error fetching wallet contacts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch contacts",
       error: error.message
     });
   }
@@ -729,10 +881,12 @@ module.exports = {
   initializeWallet,
   getOrCreateWallet,
   getWallet,
+  addMoney,
   initiateAddMoney,
   verifyAddMoney,
   sendMoneyToContact,
   receiveMoneyFromContact,
+  getWalletContacts,
   getWalletTransactions,
   getTransactionDetails,
   getWalletStats
