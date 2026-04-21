@@ -4,7 +4,12 @@ const Razorpay = require("razorpay");
 const hasRazorpayConfig = Boolean(
   process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
 );
-const configuredGatewayMode = (process.env.PAYMENT_GATEWAY_MODE || "").toLowerCase();
+// Support both PAYMENT_GATEWAY_MODE and payment_gateway_mode (case-insensitive)
+const configuredGatewayMode = (
+  process.env.PAYMENT_GATEWAY_MODE || 
+  process.env.payment_gateway_mode || 
+  ""
+).toLowerCase();
 const isMockPaymentGateway = configuredGatewayMode === "mock" || !hasRazorpayConfig;
 
 if (isMockPaymentGateway) {

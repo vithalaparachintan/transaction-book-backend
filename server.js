@@ -27,16 +27,14 @@ const authRoutes = require("./routes/authRoute");
 const customerRoutes = require("./routes/customerRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const walletRoutes = require("./routes/walletRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const hasRazorpayConfig = Boolean(
   process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
 );
 
-let paymentRoutes = null;
-if (hasRazorpayConfig) {
-  paymentRoutes = require("./routes/paymentRoutes");
-} else {
-  console.warn("⚠️ Razorpay is not configured. /api/payments routes are disabled.");
+if (!hasRazorpayConfig) {
+  console.warn("⚠️ Razorpay is not configured. Payments will not work.");
 }
 
 const app = express();
@@ -50,10 +48,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/wallet", walletRoutes);
-
-if (paymentRoutes) {
-  app.use("/api/payments", paymentRoutes);
-}
+app.use("/api/payments", paymentRoutes);
 
 app.get("/", (req, res) => res.send("Transaction Book backend"));
 
