@@ -414,12 +414,14 @@ const verifyAddMoney = async (req, res) => {
 
 /**
  * ============================================
- * SEND MONEY TO CONTACT
+ * SEND MONEY TO CONTACT (DIRECT - NO VERIFICATION)
  * ============================================
+ * Direct instant transfer to contact without payment gateway
+ * No fees charged for direct transfers
  */
 
 /**
- * Send money to contact
+ * Send money directly to contact (instant, no verification needed)
  */
 const sendMoneyToContact = async (req, res) => {
   let session = null;
@@ -453,15 +455,12 @@ const sendMoneyToContact = async (req, res) => {
       throw new Error("Wallet is not active");
     }
 
-    // Check balance (with fees)
-    const fee = calculateFee(amount);
-    const netAmount = amount - fee;
-
-    if (!hasSufficientBalance(wallet.availableBalance, amount, true)) {
+    // Check balance (NO FEES for direct transfer to contact)
+    if (!hasSufficientBalance(wallet.availableBalance, amount, false)) {
       await session.abortTransaction();
       return res.status(400).json({
         success: false,
-        message: `Insufficient balance. Required: ${formatCurrency(amount + fee)}, Available: ${formatCurrency(wallet.availableBalance)}`
+        message: `Insufficient balance. Required: ${formatCurrency(amount)}, Available: ${formatCurrency(wallet.availableBalance)}`
       });
     }
 
@@ -486,20 +485,20 @@ const sendMoneyToContact = async (req, res) => {
       throw new Error("Unauthorized: Contact does not belong to you");
     }
 
-    // Create wallet transaction
+    // Create wallet transaction (NO FEES, direct transfer)
     const walletTxn = new WalletTransaction({
       user: userId,
       type: "SEND_TO_CONTACT",
       amount: amount,
       balanceBefore: wallet.balance,
-      balanceAfter: wallet.balance - amount - fee,
+      balanceAfter: wallet.balance - amount,
       contact: contactId,
       contactName: contact.name,
       status: "completed",
       description: note || `Sent money to ${contact.name}`,
       transactionId: generateTransactionId(),
-      fee: fee,
-      netAmount: netAmount,
+      fee: 0,
+      netAmount: amount,
       ipAddress: req.ip,
       userAgent: req.get("user-agent"),
       completedAt: new Date()
@@ -507,8 +506,8 @@ const sendMoneyToContact = async (req, res) => {
 
     await walletTxn.save({ session });
 
-    // Update wallet
-    wallet.balance -= (amount + fee);
+    // Update wallet (NO FEES deducted)
+    wallet.balance -= amount;
     wallet.availableBalance = wallet.balance - wallet.pendingBalance;
     wallet.totalMoneySpent += amount;
     wallet.totalTransactions += 1;
@@ -543,15 +542,13 @@ const sendMoneyToContact = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Money sent successfully",
+      message: "Money sent successfully to contact",
       wallet: getWalletSummary(wallet),
       transaction: {
         id: walletTxn._id,
         transactionId: walletTxn.transactionId,
         type: walletTxn.type,
         amount: walletTxn.amount,
-        fee: fee,
-        netAmount: netAmount,
         contactName: contact.name,
         status: mapTransactionStatus(walletTxn.status),
         createdAt: walletTxn.createdAt

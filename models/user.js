@@ -8,7 +8,17 @@ const userSchema = new mongoose.Schema({
   // Phone is also NOT required, but must be unique if it exists.
   phone: { type: String, unique: true, sparse: true },
   password: { type: String, required: true },
-  walletBalance: { type: Number, default: 0 }
+  walletBalance: { type: Number, default: 0 },
+  
+  // Virtual Contact for direct P2P transfers (like UPI ID)
+  virtualContact: { 
+    type: String, 
+    unique: true, 
+    sparse: true,
+    match: /^[a-zA-Z0-9._-]+@wallet$/,
+    description: "Virtual wallet identifier format: username@wallet"
+  },
+  virtualContactVerified: { type: Boolean, default: false }
 }, { timestamps: true });
 
 userSchema.pre("save", async function (next) {
