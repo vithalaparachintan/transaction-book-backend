@@ -18,6 +18,8 @@ const walletTransactionSchema = new mongoose.Schema({
       "ADD_MONEY",              // User added money via payment gateway
       "SEND_TO_CONTACT",        // User sent money to a contact
       "RECEIVE_FROM_CONTACT",   // User received money from contact (manual entry)
+      "SEND_TO_USER",           // User sent money to another user (direct transfer)
+      "RECEIVE_FROM_USER",      // User received money from another user (direct transfer)
       "ADJUSTMENT",             // Admin adjustment
       "REFUND",                 // Refund from failed transaction
       "REVERSAL"                // Transaction reversal
@@ -51,6 +53,22 @@ const walletTransactionSchema = new mongoose.Schema({
   
   contactName: {
     type: String
+  },
+  
+  // Related user (for SEND_TO_USER / RECEIVE_FROM_USER transactions)
+  relatedUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  },
+  
+  relatedUserName: {
+    type: String
+  },
+  
+  // Linked transaction (for matching send/receive pairs)
+  linkedTransaction: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "WalletTransaction"
   },
   
   // Payment gateway details (for ADD_MONEY)
