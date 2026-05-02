@@ -874,6 +874,210 @@ const getWalletStats = async (req, res) => {
   }
 };
 
+/**
+ * ============================================
+ * SEND MONEY TO ANOTHER USER (NO RAZORPAY)
+ * ============================================
+ */
+
+/**
+ * Send money directly from wallet to another user's wallet
+ * NO FEES - direct transfer between users
+ */
+const sendMoneyToUser = async (req, res) => {
+  let session = null;
+
+  try {
+    const senderId = req.user._id;
+    const { receiverId, amount, note } = req.body;
+
+    // Validate
+    if (!receiverId || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Receiver ID and amount are required"
+      });
+    }
+
+    validateAmount(amount);
+
+    // Start transaction
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    // Get sender's wallet
+    const senderWallet = await Wallet.findOne({ user: senderId }).session(session);
+    if (!senderWallet) {
+      await session.abortTransaction();
+      throw new Error("Sender wallet not found");
+    }
+
+    // Check if wallet is active
+    if (!senderWallet.isActive || senderWallet.isFrozen) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Your wallet is not active"
+      });
+    }
+
+    // Check balance (NO FEES for direct user-to-user transfer)
+    if (!hasSufficientBalance(senderWallet.availableBalance, amount, false)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient balance. Required: ${formatCurrency(amount)}, Available: ${formatCurrency(senderWallet.availableBalance)}`
+      });
+    }
+
+    // Check spending limits
+    const limitCheck = checkSpendingLimits(senderWallet, amount);
+    if (!limitCheck.allowed) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: limitCheck.reason
+      });
+    }
+
+    // Get receiver's wallet
+    const receiver = await User.findById(receiverId).session(session);
+    if (!receiver) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Receiver not found"
+      });
+    }
+
+    // Check self-transfer
+    if (senderId.toString() === receiverId.toString()) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Cannot send money to yourself"
+      });
+    }
+
+    // Get or create receiver's wallet
+    let receiverWallet = await Wallet.findOne({ user: receiverId }).session(session);
+    if (!receiverWallet) {
+      receiverWallet = new Wallet({
+        user: receiverId,
+        balance: 0,
+        availableBalance: 0,
+        pendingBalance: 0,
+        isActive: true
+      });
+    }
+
+    if (!receiverWallet.isActive || receiverWallet.isFrozen) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Receiver's wallet is not active"
+      });
+    }
+
+    // Create wallet transaction for SENDER (debit)
+    const senderTxn = new WalletTransaction({
+      user: senderId,
+      type: "SEND_TO_USER",
+      amount: amount,
+      balanceBefore: senderWallet.balance,
+      balanceAfter: senderWallet.balance - amount,
+      relatedUser: receiverId,
+      relatedUserName: receiver.name,
+      status: "completed",
+      description: note || `Sent money to ${receiver.name}`,
+      transactionId: generateTransactionId(),
+      fee: 0,
+      netAmount: amount,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+      completedAt: new Date()
+    });
+
+    await senderTxn.save({ session });
+
+    // Create wallet transaction for RECEIVER (credit)
+    const receiverTxn = new WalletTransaction({
+      user: receiverId,
+      type: "RECEIVE_FROM_USER",
+      amount: amount,
+      balanceBefore: receiverWallet.balance,
+      balanceAfter: receiverWallet.balance + amount,
+      relatedUser: senderId,
+      relatedUserName: req.user.name,
+      status: "completed",
+      description: `Received money from ${req.user.name}`,
+      transactionId: generateTransactionId(),
+      fee: 0,
+      netAmount: amount,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
+      completedAt: new Date()
+    });
+
+    await receiverTxn.save({ session });
+
+    // Update sender's wallet (NO FEES deducted)
+    senderWallet.balance -= amount;
+    senderWallet.availableBalance = senderWallet.balance - senderWallet.pendingBalance;
+    senderWallet.totalMoneySpent += amount;
+    senderWallet.totalTransactions += 1;
+    senderWallet.dailySpent += amount;
+    senderWallet.monthlySpent += amount;
+    senderWallet.lastSpentDate = new Date();
+    await senderWallet.save({ session });
+
+    // Update receiver's wallet (receives full amount, NO FEES)
+    receiverWallet.balance += amount;
+    receiverWallet.availableBalance = receiverWallet.balance - receiverWallet.pendingBalance;
+    receiverWallet.totalMoneyReceived += amount;
+    receiverWallet.totalTransactions += 1;
+    await receiverWallet.save({ session });
+
+    // Link sender and receiver transactions
+    senderTxn.linkedTransaction = receiverTxn._id;
+    await senderTxn.save({ session });
+
+    receiverTxn.linkedTransaction = senderTxn._id;
+    await receiverTxn.save({ session });
+
+    await session.commitTransaction();
+
+    res.status(200).json({
+      success: true,
+      message: `Money sent successfully to ${receiver.name}`,
+      wallet: getWalletSummary(senderWallet),
+      transaction: {
+        id: senderTxn._id,
+        transactionId: senderTxn.transactionId,
+        type: senderTxn.type,
+        amount: amount,
+        receiver: receiver.name,
+        receiverId: receiverId,
+        timestamp: senderTxn.completedAt
+      }
+    });
+  } catch (error) {
+    if (session) {
+      await session.abortTransaction();
+    }
+    console.error("Error sending money to user:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to send money",
+      error: error.message
+    });
+  } finally {
+    if (session) {
+      session.endSession();
+    }
+  }
+};
+
 module.exports = {
   initializeWallet,
   getOrCreateWallet,
@@ -883,6 +1087,7 @@ module.exports = {
   verifyAddMoney,
   sendMoneyToContact,
   receiveMoneyFromContact,
+  sendMoneyToUser,
   getWalletContacts,
   getWalletTransactions,
   getTransactionDetails,

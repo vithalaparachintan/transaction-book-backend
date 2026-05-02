@@ -7,6 +7,7 @@ const {
   initiateAddMoney,
   verifyAddMoney,
   sendMoneyToContact,
+  sendMoneyToUser,
   receiveMoneyFromContact,
   getWalletContacts,
   getWalletTransactions,
@@ -38,6 +39,11 @@ router.post("/add-money", addMoney); // POST /api/wallet/add-money
  */
 router.post("/send-to-contact", sendMoneyToContact); // POST /api/wallet/send-to-contact
 router.post("/send-money", sendMoneyToContact); // POST /api/wallet/send-money
+
+/**
+ * Send Money to Users (Direct wallet transfer, NO Razorpay)
+ */
+router.post("/send-to-user", sendMoneyToUser); // POST /api/wallet/send-to-user
 
 /**
  * Receive Money from Contacts (Manual Entry)
