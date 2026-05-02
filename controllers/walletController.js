@@ -266,7 +266,13 @@ const addMoney = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Money added successfully (mock gateway)",
-      wallet: getWalletSummary(wallet),
+      transactionId: walletTxn.transactionId,
+      order: {
+        orderId: order.id,
+        amount: order.amount / 100,
+        currency: order.currency,
+        key: process.env.RAZORPAY_KEY_ID
+      },
       transaction: {
         id: walletTxn._id,
         transactionId: walletTxn.transactionId,
@@ -275,7 +281,8 @@ const addMoney = async (req, res) => {
         status: mapTransactionStatus(walletTxn.status),
         gatewayMode: "mock",
         createdAt: walletTxn.createdAt
-      }
+      },
+      wallet: getWalletSummary(wallet)
     });
   } catch (error) {
     if (session) {
