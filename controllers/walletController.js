@@ -202,10 +202,7 @@ const addMoney = async (req, res) => {
     session = await mongoose.startSession();
     session.startTransaction();
 
-    const wallet = await Wallet.findOne({ user: userId }).session(session);
-    if (!wallet) {
-      throw new Error("Wallet not found");
-    }
+    const wallet = await getOrCreateWallet(userId);
 
     if (!wallet.isActive || wallet.isFrozen) {
       throw new Error("Wallet is not active");
@@ -335,10 +332,7 @@ const verifyAddMoney = async (req, res) => {
     session.startTransaction();
 
     // Get wallet
-    const wallet = await Wallet.findOne({ user: userId }).session(session);
-    if (!wallet) {
-      throw new Error("Wallet not found");
-    }
+    const wallet = await getOrCreateWallet(userId);
 
     // Find wallet transaction
     const walletTxn = await WalletTransaction.findOne({
@@ -452,10 +446,7 @@ const sendMoneyToContact = async (req, res) => {
     session.startTransaction();
 
     // Get wallet
-    const wallet = await Wallet.findOne({ user: userId }).session(session);
-    if (!wallet) {
-      throw new Error("Wallet not found");
-    }
+    const wallet = await getOrCreateWallet(userId);
 
     // Check if wallet is active
     if (!wallet.isActive || wallet.isFrozen) {
@@ -913,11 +904,7 @@ const sendMoneyToUser = async (req, res) => {
     session.startTransaction();
 
     // Get sender's wallet
-    const senderWallet = await Wallet.findOne({ user: senderId }).session(session);
-    if (!senderWallet) {
-      await session.abortTransaction();
-      throw new Error("Sender wallet not found");
-    }
+    const senderWallet = await getOrCreateWallet(senderId);
 
     // Check if wallet is active
     if (!senderWallet.isActive || senderWallet.isFrozen) {
@@ -967,18 +954,7 @@ const sendMoneyToUser = async (req, res) => {
     }
 
     // Get or create receiver's wallet
-    let receiverWallet = await Wallet.findOne({ user: receiverId }).session(session);
-    if (!receiverWallet) {
-      receiverWallet = new Wallet({
-        user: receiverId,
-        balance: 0,
-        availableBalance: 0,
-        pendingBalance: 0,
-        isActive: true
-      });
-      // Save new wallet with session for transaction consistency
-      await receiverWallet.save({ session });
-    }
+    const receiverWallet = await getOrCreateWallet(receiverId);
 
     if (!receiverWallet.isActive || receiverWallet.isFrozen) {
       await session.abortTransaction();
