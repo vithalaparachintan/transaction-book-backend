@@ -39,9 +39,20 @@ if (!hasRazorpayConfig) {
 
 const app = express();
 
+// CORS Configuration - Must be before routes
+const corsOptions = {
+  origin: "*", // Allow all origins for development
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: false
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Enable preflight for all routes
+
 // Middleware
-app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use("/api/auth", authRoutes);
