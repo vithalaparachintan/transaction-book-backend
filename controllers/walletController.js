@@ -976,6 +976,8 @@ const sendMoneyToUser = async (req, res) => {
         pendingBalance: 0,
         isActive: true
       });
+      // Save new wallet with session for transaction consistency
+      await receiverWallet.save({ session });
     }
 
     if (!receiverWallet.isActive || receiverWallet.isFrozen) {
