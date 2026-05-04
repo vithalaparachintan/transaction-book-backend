@@ -552,7 +552,7 @@ const sendMoneyToContact = async (req, res) => {
       customer: contactId,
       customerName: contact.name,
       amount: amount,
-      type: "credit",
+      type: "debit",
       note: note || `Sent money to ${contact.name}`,
       date: new Date()
     });
@@ -681,7 +681,7 @@ const receiveMoneyFromContact = async (req, res) => {
       customer: contactId,
       customerName: contact.name,
       amount: amount,
-      type: "debit",
+      type: "credit",
       note: note || `Received money from ${contact.name}`,
       date: new Date()
     });
