@@ -391,9 +391,20 @@ const getAllUsers = async (req, res) => {
       .select("name email phone walletBalance")
       .sort({ name: 1 });
 
+    // Deduplicate by name (case-insensitive) - keep first occurrence
+    const seen = new Set();
+    const uniqueUsers = users.filter(user => {
+      const lowerName = (user.name || "").toLowerCase().trim();
+      if (seen.has(lowerName)) {
+        return false;
+      }
+      seen.add(lowerName);
+      return true;
+    });
+
     return res.status(200).json({
       success: true,
-      users
+      users: uniqueUsers
     });
   } catch (err) {
     console.error("Get Users Error:", err);

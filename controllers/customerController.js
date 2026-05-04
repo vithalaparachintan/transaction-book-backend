@@ -5,7 +5,19 @@ const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const getCustomers = async (req, res) => {
   try {
     const customers = await Customer.find({ user: req.user._id }).sort({ createdAt: -1 });
-    res.json(customers);
+    
+    // Deduplicate by name (case-insensitive) - keep first occurrence
+    const seen = new Set();
+    const uniqueCustomers = customers.filter(customer => {
+      const lowerName = (customer.name || "").toLowerCase().trim();
+      if (seen.has(lowerName)) {
+        return false;
+      }
+      seen.add(lowerName);
+      return true;
+    });
+    
+    res.json(uniqueCustomers);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
