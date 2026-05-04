@@ -156,6 +156,9 @@ const initiateAddMoney = async (req, res) => {
 
     await walletTxn.save();
 
+    // Include gateway mode in response for frontend to detect mock mode
+    const gatewayMode = isMockPaymentGateway() ? "mock" : "live";
+
     res.status(200).json({
       success: true,
       message: "Payment order created",
@@ -163,7 +166,11 @@ const initiateAddMoney = async (req, res) => {
         orderId: order.id,
         amount: order.amount / 100,
         currency: order.currency,
-        key: process.env.RAZORPAY_KEY_ID
+        key: process.env.RAZORPAY_KEY_ID,
+        isMock: order.isMock
+      },
+      transaction: {
+        gatewayMode: gatewayMode
       },
       transactionId: walletTxn.transactionId
     });
@@ -334,14 +341,27 @@ const verifyAddMoney = async (req, res) => {
     // Get wallet
     const wallet = await getOrCreateWallet(userId);
 
-    // Find wallet transaction
-    const walletTxn = await WalletTransaction.findOne({
-      orderId: orderId,
-      user: userId
+    // Find wallet transaction - check both orderId formats (real and mock)
+    let walletTxn = await WalletTransaction.findOne({
+      $or: [
+        { orderId: orderId, user: userId },
+        { transactionId: { $regex: orderId }, user: userId } // Fallback for mock transactions
+      ]
     }).session(session);
 
     if (!walletTxn) {
-      throw new Error("Wallet transaction not found");
+      // For mock mode, find the most recent initiated ADD_MONEY transaction
+      if (orderId && orderId.includes("mock")) {
+        walletTxn = await WalletTransaction.findOne({
+          user: userId,
+          type: "ADD_MONEY",
+          status: "initiated"
+        }).sort({ createdAt: -1 }).session(session);
+      }
+      
+      if (!walletTxn) {
+        throw new Error("Wallet transaction not found");
+      }
     }
 
     // Update wallet transaction
@@ -381,6 +401,13 @@ const verifyAddMoney = async (req, res) => {
     await payment.save({ session });
 
     await session.commitTransaction();
+
+    // Sync User model walletBalance for backward compatibility
+    const user = await User.findById(userId);
+    if (user) {
+      user.walletBalance = wallet.balance;
+      await user.save();
+    }
 
     res.status(200).json({
       success: true,

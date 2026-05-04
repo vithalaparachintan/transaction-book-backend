@@ -315,11 +315,19 @@ const requestRefund = async (req, res) => {
  */
 const getWalletBalance = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("walletBalance");
+    const Wallet = require("../models/Wallet");
+    const wallet = await Wallet.findOne({ user: req.user._id });
+    
+    if (!wallet) {
+      return res.status(200).json({
+        success: true,
+        balance: 0
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      balance: user.walletBalance
+      balance: wallet.balance || 0
     });
   } catch (err) {
     console.error("Wallet Balance Error:", err);
@@ -387,13 +395,28 @@ const getPaymentStatistics = async (req, res) => {
  */
 const getAllUsers = async (req, res) => {
   try {
+    const Wallet = require("../models/Wallet");
+    
     const users = await User.find({ _id: { $ne: req.user._id } })
-      .select("name email phone walletBalance")
+      .select("_id name email phone")
       .sort({ name: 1 });
+
+    // Get wallet balances for all users
+    const wallets = await Wallet.find({ user: { $in: users.map(u => u._id) } }).select("user balance");
+    const walletMap = new Map(wallets.map(w => [w.user.toString(), w.balance || 0]));
+
+    // Map users with wallet balances
+    const usersWithBalance = users.map(user => ({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      walletBalance: walletMap.get(user._id.toString()) || 0
+    }));
 
     // Deduplicate by name (case-insensitive) - keep first occurrence
     const seen = new Set();
-    const uniqueUsers = users.filter(user => {
+    const uniqueUsers = usersWithBalance.filter(user => {
       const lowerName = (user.name || "").toLowerCase().trim();
       if (seen.has(lowerName)) {
         return false;
@@ -417,6 +440,9 @@ const getAllUsers = async (req, res) => {
  */
 const addMoneyToWallet = async (req, res) => {
   try {
+    const Wallet = require("../models/Wallet");
+    const WalletTransaction = require("../models/WalletTransaction");
+    
     const { amount } = req.body;
     
     if (!amount || amount <= 0) {
@@ -427,14 +453,45 @@ const addMoneyToWallet = async (req, res) => {
       return res.status(400).json({ message: "Maximum limit: ₹100,000" });
     }
 
+    // Get or create wallet
+    let wallet = await Wallet.findOne({ user: req.user._id });
+    if (!wallet) {
+      wallet = new Wallet({ user: req.user._id, balance: 0 });
+      await wallet.save();
+    }
+
+    // Update wallet
+    wallet.balance += Number(amount);
+    wallet.availableBalance = wallet.balance - (wallet.pendingBalance || 0);
+    wallet.totalMoneyAdded = (wallet.totalMoneyAdded || 0) + Number(amount);
+    wallet.totalTransactions = (wallet.totalTransactions || 0) + 1;
+    await wallet.save();
+
+    // Create wallet transaction record
+    const transaction = new WalletTransaction({
+      user: req.user._id,
+      type: "ADD_MONEY",
+      amount: Number(amount),
+      balanceBefore: wallet.balance - Number(amount),
+      balanceAfter: wallet.balance,
+      status: "completed",
+      description: `Added ₹${Number(amount).toFixed(2)} to wallet (Demo)`,
+      transactionId: `DEMO-${Date.now()}`,
+      fee: 0,
+      netAmount: Number(amount),
+      completedAt: new Date()
+    });
+    await transaction.save();
+
+    // Also update User model for backward compatibility
     const user = await User.findById(req.user._id);
-    user.walletBalance += Number(amount);
+    user.walletBalance = wallet.balance;
     await user.save();
 
     return res.status(200).json({
       success: true,
       message: `₹${Number(amount).toFixed(2)} added to wallet`,
-      newBalance: user.walletBalance
+      newBalance: wallet.balance
     });
   } catch (err) {
     console.error("Add Money Error:", err);
