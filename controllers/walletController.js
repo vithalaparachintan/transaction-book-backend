@@ -743,6 +743,7 @@ const getWalletTransactions = async (req, res) => {
         description: t.description,
         contact: t.contact,
         contactName: t.contactName,
+        relatedUserName: t.relatedUserName,
         balanceBefore: t.balanceBefore,
         balanceAfter: t.balanceAfter,
         createdAt: t.createdAt
