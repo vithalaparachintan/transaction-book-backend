@@ -546,6 +546,56 @@ const sendMoneyToContact = async (req, res) => {
     contact.balance += amount;
     await contact.save({ session });
 
+    // Check if contact has a real account (by phone number) and credit their wallet if they do
+    if (contact.phone) {
+      const contactUser = await User.findOne({ phone: contact.phone }).session(session);
+      
+      if (contactUser && contactUser._id.toString() !== userId.toString()) {
+        // Contact has a real account - credit their wallet
+        let contactWallet = await Wallet.findOne({ user: contactUser._id }).session(session);
+        
+        if (!contactWallet) {
+          contactWallet = new Wallet({
+            user: contactUser._id,
+            balance: 0,
+            availableBalance: 0,
+            isActive: true
+          });
+        }
+
+        // Add money to contact's wallet
+        contactWallet.balance += amount;
+        contactWallet.availableBalance = contactWallet.balance - (contactWallet.pendingBalance || 0);
+        contactWallet.totalMoneyAdded = (contactWallet.totalMoneyAdded || 0) + amount;
+        contactWallet.totalTransactions = (contactWallet.totalTransactions || 1) + 1;
+        
+        await contactWallet.save({ session });
+
+        // Create wallet transaction for contact (they received money)
+        const contactWalletTxn = new WalletTransaction({
+          user: contactUser._id,
+          type: "RECEIVE_FROM_CONTACT",
+          amount: amount,
+          balanceBefore: contactWallet.balance - amount,
+          balanceAfter: contactWallet.balance,
+          contact: userId,
+          contactName: contact.name,
+          status: "completed",
+          description: `Received money from ${contact.name}`,
+          transactionId: generateTransactionId(),
+          fee: 0,
+          netAmount: amount,
+          completedAt: new Date()
+        });
+
+        await contactWalletTxn.save({ session });
+
+        // Sync contact user's walletBalance for backward compatibility
+        contactUser.walletBalance = contactWallet.balance;
+        await contactUser.save({ session });
+      }
+    }
+
     // Create ledger transaction
     const ledgerTxn = new Transaction({
       user: userId,
@@ -674,6 +724,49 @@ const receiveMoneyFromContact = async (req, res) => {
     // User collected money, so this contact owes less.
     contact.balance -= amount;
     await contact.save({ session });
+
+    // Check if contact has a real account (by phone number) and deduct from their wallet if they do
+    if (contact.phone) {
+      const contactUser = await User.findOne({ phone: contact.phone }).session(session);
+      
+      if (contactUser && contactUser._id.toString() !== userId.toString()) {
+        // Contact has a real account - deduct from their wallet
+        let contactWallet = await Wallet.findOne({ user: contactUser._id }).session(session);
+        
+        if (contactWallet) {
+          // Only deduct if they have sufficient balance
+          if (contactWallet.balance >= amount) {
+            contactWallet.balance -= amount;
+            contactWallet.availableBalance = contactWallet.balance - (contactWallet.pendingBalance || 0);
+            
+            await contactWallet.save({ session });
+
+            // Create wallet transaction for contact (they sent money)
+            const contactWalletTxn = new WalletTransaction({
+              user: contactUser._id,
+              type: "SEND_TO_CONTACT",
+              amount: amount,
+              balanceBefore: contactWallet.balance + amount,
+              balanceAfter: contactWallet.balance,
+              contact: userId,
+              contactName: contact.name,
+              status: "completed",
+              description: `Sent money to ${contact.name}`,
+              transactionId: generateTransactionId(),
+              fee: 0,
+              netAmount: amount,
+              completedAt: new Date()
+            });
+
+            await contactWalletTxn.save({ session });
+
+            // Sync contact user's walletBalance for backward compatibility
+            contactUser.walletBalance = contactWallet.balance;
+            await contactUser.save({ session });
+          }
+        }
+      }
+    }
 
     // Create ledger transaction
     const ledgerTxn = new Transaction({
